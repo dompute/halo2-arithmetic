@@ -1,0 +1,3 @@
+[submodule "fam"]
+	path = libfam
+	url = git@gitlab.com:dompute/fam.git
