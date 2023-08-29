@@ -3,6 +3,29 @@ use std::ops::Deref;
 use group::ff::Field;
 use serde::{Deserialize, Serialize};
 
+/// Describes the relative rotation of a vector. Negative numbers represent
+/// reverse (leftmost) rotations and positive numbers represent forward (rightmost)
+/// rotations. Zero represents no rotation.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Rotation(pub i32);
+
+impl Rotation {
+    /// The current location in the evaluation domain
+    pub fn cur() -> Rotation {
+        Rotation(0)
+    }
+
+    /// The previous location in the evaluation domain
+    pub fn prev() -> Rotation {
+        Rotation(-1)
+    }
+
+    /// The next location in the evaluation domain
+    pub fn next() -> Rotation {
+        Rotation(1)
+    }
+}
+
 /// Value used in a calculation
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Deserialize, Serialize)]
 #[repr(C)]

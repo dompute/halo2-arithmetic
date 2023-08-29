@@ -1,248 +1,99 @@
 use std::ops::Deref;
-use std::os::raw::c_void;
 
-use halo2curves::{bn256::Fr, ff::Field};
-use serde::{Deserialize, Serialize};
+use ff::PrimeField;
 
-use crate::value_source::{Calculation, CalculationInfo, ValueSource};
+use crate::value_source::{Calculation, CalculationInfo, Rotation, ValueSource};
 
-use crate::stub::*;
-
-#[derive(Debug)]
-pub struct WrappedGraph {
-    inner: *const c_void,
-}
-
-unsafe impl Sync for WrappedGraph {}
-
-impl Default for WrappedGraph {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl WrappedGraph {
-    pub fn new() -> Self {
-        unsafe {
-            Self {
-                inner: create_graph(),
-            }
-        }
-    }
-
-    pub fn reset(&mut self, num: usize) {
-        unsafe {
-            reset_graph(self.inner, num);
-        }
-    }
-
-    pub fn eval<P: Deref<Target = [Fr]>>(
-        &self,
-        values: &mut [Fr],
-        rotations: &[i32],
-        constants: &[Fr],
-        fixed: Option<&[P]>,
-        advice: Option<&[P]>,
-        instance: Option<&[P]>,
-        challenges: &[Fr],
-        beta: &Fr,
-        gamma: &Fr,
-        theta: &Fr,
-        y: &Fr,
-        rot_scale: i32,
-        isize: i32,
-    ) {
-        unsafe {
-            let f = |v: Option<&[P]>| -> (Vec<*const Fr>, usize, usize) {
-                if let Some(fixed) = v {
-                    let ptr = fixed.iter().map(|t| t.as_ptr()).collect::<Vec<_>>();
-                    let col = fixed.len();
-                    let row = fixed.get(0).and_then(|p| Some(p.len())).unwrap_or_default();
-                    (ptr, col, row)
-                } else {
-                    (vec![], 0, 0)
-                }
-            };
-
-            let (fixed, fixed_col, fixed_row) = f(fixed);
-            let (advice, advice_col, advice_row) = f(advice);
-            let (instance, instance_col, instance_row) = f(instance);
-            evaluate_batch(
-                values.as_mut_ptr() as *mut _,
-                values.len(),
-                self.inner,
-                rotations.as_ptr(),
-                rotations.len(),
-                constants.as_ptr() as *const _,
-                constants.len(),
-                fixed.as_ptr() as *const _,
-                fixed_col,
-                fixed_row,
-                advice.as_ptr() as *const _,
-                advice_col,
-                advice_row,
-                instance.as_ptr() as *const _,
-                instance_col,
-                instance_row,
-                challenges.as_ptr() as *const _,
-                challenges.len(),
-                beta as *const Fr as *const _,
-                gamma as *const Fr as *const _,
-                theta as *const Fr as *const _,
-                y as *const Fr as *const _,
-                rot_scale,
-                isize,
-            );
-        }
-    }
-
-    pub fn push(&mut self, cal: &CalculationInfo) {
-        let target = cal.target;
-        match cal.calculation.clone() {
-            Calculation::Add(l, r) => {
-                let vs: Vec<ValueSource> = vec![l, r];
-                unsafe {
-                    push_node(
-                        self.inner,
-                        target,
-                        CalculationTag::Add,
-                        vs.as_ptr() as *const _,
-                        vs.len(),
-                    );
-                }
-            }
-            Calculation::Sub(l, r) => {
-                let vs: Vec<ValueSource> = vec![l, r];
-                unsafe {
-                    push_node(
-                        self.inner,
-                        target,
-                        CalculationTag::Sub,
-                        vs.as_ptr() as *const _,
-                        vs.len(),
-                    );
-                }
-            }
-            Calculation::Mul(l, r) => {
-                let vs: Vec<ValueSource> = vec![l, r];
-                unsafe {
-                    push_node(
-                        self.inner,
-                        target,
-                        CalculationTag::Mul,
-                        vs.as_ptr() as *const _,
-                        vs.len(),
-                    );
-                }
-            }
-            Calculation::Double(l) => {
-                let vs: Vec<ValueSource> = vec![l];
-                unsafe {
-                    push_node(
-                        self.inner,
-                        target,
-                        CalculationTag::Double,
-                        vs.as_ptr() as *const _,
-                        vs.len(),
-                    );
-                }
-            }
-            Calculation::Square(l) => {
-                let vs: Vec<ValueSource> = vec![l];
-                unsafe {
-                    push_node(
-                        self.inner,
-                        target,
-                        CalculationTag::Square,
-                        vs.as_ptr() as *const _,
-                        vs.len(),
-                    );
-                }
-            }
-            Calculation::Negate(l) => {
-                let vs: Vec<ValueSource> = vec![l];
-                unsafe {
-                    push_node(
-                        self.inner,
-                        target,
-                        CalculationTag::Negate,
-                        vs.as_ptr() as *const _,
-                        vs.len(),
-                    );
-                }
-            }
-            Calculation::Store(l) => unsafe {
-                let vs: Vec<ValueSource> = vec![l];
-                push_node(
-                    self.inner,
-                    target,
-                    CalculationTag::Store,
-                    vs.as_ptr() as *const _,
-                    vs.len(),
-                );
-            },
-            Calculation::Horner(l, v, r) => {
-                let mut vs: Vec<ValueSource> = vec![l];
-                for &i in v.iter() {
-                    vs.push(i)
-                }
-                vs.push(r);
-                unsafe {
-                    push_node(
-                        self.inner,
-                        target,
-                        CalculationTag::Horner,
-                        vs.as_ptr() as *const _,
-                        vs.len(),
-                    );
-                }
-            }
-        }
-    }
-}
-
-impl Drop for WrappedGraph {
-    fn drop(&mut self) {
-        unsafe {
-            delete_graph(self.inner);
-        }
-    }
-}
-
-#[derive(Default, Debug, Deserialize, Serialize)]
-#[repr(C)]
-pub struct Graph {
+/// GraphEvaluator
+#[derive(Clone, Debug)]
+pub struct GraphEvaluator<C: PrimeField> {
+    /// Constants
+    pub constants: Vec<C>,
+    /// Rotations
+    pub rotations: Vec<i32>,
+    /// Calculations
     pub calculations: Vec<CalculationInfo>,
+    /// Number of intermediates
     pub num_intermediates: usize,
-    #[serde(skip)]
-    wrapped: WrappedGraph,
 }
 
-impl Graph {
-    fn wrap(&mut self) -> &WrappedGraph {
-        self.wrapped.reset(self.num_intermediates);
-        for i in self.calculations.iter() {
-            self.wrapped.push(i);
+impl<C: PrimeField> Default for GraphEvaluator<C> {
+    fn default() -> Self {
+        Self {
+            // Fixed positions to allow easy access
+            constants: vec![C::ZERO, C::ONE, C::from(2u64)],
+            rotations: Vec::new(),
+            calculations: Vec::new(),
+            num_intermediates: 0,
         }
-        &self.wrapped
+    }
+}
+
+impl<C: PrimeField> GraphEvaluator<C> {
+    /// Adds a rotation
+    pub fn add_rotation(&mut self, rotation: &Rotation) -> usize {
+        let position = self.rotations.iter().position(|&c| c == rotation.0);
+        match position {
+            Some(pos) => pos,
+            None => {
+                self.rotations.push(rotation.0);
+                self.rotations.len() - 1
+            }
+        }
     }
 
-    fn evaluate_batch_inner<F: Field, P: Deref<Target = [F]> + Sync + Send>(
+    /// Adds a constant
+    pub fn add_constant(&mut self, constant: &C) -> ValueSource {
+        let position = self.constants.iter().position(|&c| c == *constant);
+        ValueSource::Constant(match position {
+            Some(pos) => pos,
+            None => {
+                self.constants.push(*constant);
+                self.constants.len() - 1
+            }
+        })
+    }
+
+    /// Adds a calculation.
+    /// Currently does the simplest thing possible: just stores the
+    /// resulting value so the result can be reused  when that calculation
+    /// is done multiple times.
+    pub fn add_calculation(&mut self, calculation: Calculation) -> ValueSource {
+        let existing_calculation = self
+            .calculations
+            .iter()
+            .find(|c| c.calculation == calculation);
+        match existing_calculation {
+            Some(existing_calculation) => ValueSource::Intermediate(existing_calculation.target),
+            None => {
+                let target = self.num_intermediates;
+                self.calculations.push(CalculationInfo {
+                    calculation,
+                    target,
+                });
+                self.num_intermediates += 1;
+                ValueSource::Intermediate(target)
+            }
+        }
+    }
+
+    pub fn evaluate<P: Deref<Target = [C]> + Sync + Send>(
         &self,
-        values: &mut [F],
-        rotations: &[i32],
-        constants: &[F],
+        values: &mut [C],
         fixed: &[P],
         advice: &[P],
         instance: &[P],
-        challenges: &[F],
-        beta: &F,
-        gamma: &F,
-        theta: &F,
-        y: &F,
+        challenges: &[C],
+        beta: &C,
+        gamma: &C,
+        theta: &C,
+        y: &C,
         rot_scale: i32,
         isize: i32,
     ) {
+        let rotations = &self.rotations;
+        let constants = &self.constants;
+
         fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mut [T], f: F) {
             let n = v.len();
             let num_threads = rayon::current_num_threads();
@@ -274,7 +125,7 @@ impl Graph {
                     .map(|rot| get_rotation_idx(idx, *rot, rot_scale, isize))
                     .collect::<Vec<_>>();
 
-                let mut intermediates = vec![F::ZERO; self.num_intermediates];
+                let mut intermediates = vec![C::ZERO; self.num_intermediates];
                 for calc in self.calculations.iter() {
                     intermediates[calc.target] = calc.calculation.eval(
                         &rotations,
@@ -295,100 +146,9 @@ impl Graph {
                 if let Some(calc) = self.calculations.last() {
                     *value = intermediates[calc.target];
                 } else {
-                    *value = F::ZERO;
+                    *value = C::ZERO;
                 }
             }
         })
-    }
-}
-
-pub trait GraphEval<F: Field> {
-    fn update_and_eval<P: Deref<Target = [F]> + Sync + Send>(
-        &mut self,
-        info: Option<(&[CalculationInfo], usize)>,
-        values: &mut [F],
-        rotations: &[i32],
-        constants: &[F],
-        fixed: Option<&[P]>,
-        advice: Option<&[P]>,
-        instance: Option<&[P]>,
-        challenges: &[F],
-        beta: &F,
-        gamma: &F,
-        theta: &F,
-        y: &F,
-        rot_scale: i32,
-        isize: i32,
-    );
-}
-
-impl<F: Field> GraphEval<F> for Graph {
-    default fn update_and_eval<P: Deref<Target = [F]> + Sync + Send>(
-        &mut self,
-        info: Option<(&[CalculationInfo], usize)>,
-        values: &mut [F],
-        rotations: &[i32],
-        constants: &[F],
-        fixed: Option<&[P]>,
-        advice: Option<&[P]>,
-        instance: Option<&[P]>,
-        challenges: &[F],
-        beta: &F,
-        gamma: &F,
-        theta: &F,
-        y: &F,
-        rot_scale: i32,
-        isize: i32,
-    ) {
-        if let Some((calculations, num_intermediates)) = info {
-            self.calculations = calculations.to_vec();
-            self.num_intermediates = num_intermediates;
-        }
-        self.evaluate_batch_inner::<F, P>(
-            values,
-            rotations,
-            constants,
-            fixed.unwrap(),
-            advice.unwrap(),
-            instance.unwrap(),
-            challenges,
-            beta,
-            gamma,
-            theta,
-            y,
-            rot_scale,
-            isize,
-        );
-    }
-}
-
-impl GraphEval<Fr> for Graph {
-    fn update_and_eval<P: Deref<Target = [Fr]> + Sync + Send>(
-        &mut self,
-        info: Option<(&[CalculationInfo], usize)>,
-        values: &mut [Fr],
-        rotations: &[i32],
-        constants: &[Fr],
-        fixed: Option<&[P]>,
-        advice: Option<&[P]>,
-        instance: Option<&[P]>,
-        challenges: &[Fr],
-        beta: &Fr,
-        gamma: &Fr,
-        theta: &Fr,
-        y: &Fr,
-        rot_scale: i32,
-        isize: i32,
-    ) {
-        if let Some((calculations, num_intermediates)) = info {
-            self.calculations = calculations.to_vec();
-            self.num_intermediates = num_intermediates;
-        }
-
-        let graph = self.wrap();
-        graph.eval(
-            values, rotations, constants, fixed, advice, instance, challenges, beta, gamma, theta,
-            y, rot_scale, isize,
-        );
     }
 }
