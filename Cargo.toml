@@ -9,12 +9,13 @@ edition = "2021"
 ff = "0.13"
 group = "0.13"
 rayon = "1.7.0"
-halo2curves = { git = 'https://github.com/privacy-scaling-explorations/halo2curves', tag = "0.3.2" }
 serde = { version = "1.0.160", features = ["derive"] }
+
+[dev-dependencies]
+halo2curves = { git = 'https://github.com/privacy-scaling-explorations/halo2curves', tag = "0.3.2" }
 
 [build-dependencies]
 cmake = "0.1.50"
-
 
 [features]
 cuda = []

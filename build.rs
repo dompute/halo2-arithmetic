@@ -3,6 +3,7 @@ use std::env;
 
 fn main() {
     let cuda_enabled = env::var("CARGO_FEATURE_CUDA").is_ok();
+    println!("cargo:warning=CUDA Status:{}", cuda_enabled);
     if !cuda_enabled {
         return;
     }
@@ -16,7 +17,6 @@ fn main() {
         .define("CMAKE_BUILD_TYPE", profile)
         .define("DG_TEST", "OFF")
         .build();
-
     println!("cargo:rustc-link-search=native={}", dst.display());
     println!("cargo:rustc-link-lib=static=foo");
 }
