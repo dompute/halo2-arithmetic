@@ -1,6 +1,4 @@
-use cmake::Config;
 use std::env;
-
 
 fn main() {
     let cuda_enabled = env::var("CARGO_FEATURE_CUDA").is_ok();
@@ -22,7 +20,6 @@ fn main() {
         .file("libfam/src/stub.cu")
         .file("libfam/src/arithmetic/msm.cu")
         .compile("libfam.a");
-
 
     // let dst = Config::new("libfam")
     //     .define("CMAKE_BUILD_TYPE", profile)
