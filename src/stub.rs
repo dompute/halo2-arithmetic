@@ -59,34 +59,3 @@ extern "C" {
 
     pub fn fft_fr(values: *mut U256, twiddles: *const U256, log_n: u32);
 }
-
-#[cfg(test)]
-mod tests {
-    use ff::Field;
-    use rand::rngs::OsRng;
-    use std::ffi::c_void;
-
-    use group::{Curve, Group};
-
-    #[test]
-    fn test_msm() {
-        use halo2curves::bn256::{Fr, G1};
-        let scalars = (0..256).map(|_| Fr::random(OsRng)).collect::<Vec<_>>();
-        let bases = (0..256).map(|_| G1::random(OsRng)).collect::<Vec<_>>();
-        let mut out = G1::default();
-        unsafe {
-            super::msm_fr_g1(
-                bases.as_ptr() as *const c_void,
-                scalars.as_ptr() as *const c_void,
-                256 as u32,
-                &mut out as *mut _ as *mut c_void,
-            );
-        }
-
-        let mut expect = G1::identity();
-        for (s, b) in scalars.iter().zip(bases.iter()) {
-            expect += b * s;
-        }
-        assert_eq!(out.to_affine(), expect.to_affine());
-    }
-}

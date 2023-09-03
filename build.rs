@@ -7,26 +7,27 @@ fn main() {
         return;
     }
 
-    let profile = match env::var("PROFILE").unwrap().as_str() {
-        "release" => "Release",
-        _ => "Debug",
-    };
+    // let profile = match env::var("PROFILE").unwrap().as_str() {
+    //     "release" => "Release",
+    //     _ => "Debug",
+    // };
 
-    cc::Build::new()
+    let mut build = cc::Build::new();
+    build
         .cuda(true)
         .opt_level(3)
-        .flag("-cudart=shared")
+        .debug(true)
+        .cudart("static")
         .file("libfam/src/base.cu")
         .file("libfam/src/stub.cu")
-        .file("libfam/src/arithmetic/msm.cu")
-        .compile("libfam.a");
+        .file("libfam/src/arithmetic/msm.cu");
+    println!("cargo:warning={:?}", build);
+    build.compile("libfam.a");
 
-    // let dst = Config::new("libfam")
-    //     .define("CMAKE_BUILD_TYPE", profile)
-    //     .define("DG_TEST", "OFF")
-    //     .build();
-    // println!("cargo:rustc-link-search=native={}/lib", dst.display());
-    // println!("cargo:rustc-link-lib=static=fam");
     println!("cargo:rustc-link-search=native=/opt/cuda/lib64/stubs");
     println!("cargo:rustc-link-lib=cuda");
+
+    println!("cargo:rerun-if-changed=libfam/src/base.cu");
+    println!("cargo:rerun-if-changed=libfam/src/stub.cu");
+    println!("cargo:rerun-if-changed=libfam/src/arithmetic/msm.cu");
 }
