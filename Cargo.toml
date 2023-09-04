@@ -10,9 +10,9 @@ ff = "0.13"
 group = "0.13"
 rayon = "1.7.0"
 serde = { version = "1.0.160", features = ["derive"] }
+halo2curves = { git = 'https://github.com/privacy-scaling-explorations/halo2curves', tag = "0.3.2" }
 
 [dev-dependencies]
-halo2curves = { git = 'https://github.com/privacy-scaling-explorations/halo2curves', tag = "0.3.2" }
 rand = "0.8.5"
 
 [build-dependencies]

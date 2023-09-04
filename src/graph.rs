@@ -1,8 +1,12 @@
-use std::ops::Deref;
+use std::{ffi::c_void, ops::Deref};
 
 use ff::PrimeField;
+use halo2curves::bn256::Fr;
 
-use crate::value_source::{Calculation, CalculationInfo, Rotation, ValueSource};
+use crate::{
+    stub::{create_graph, evaluate_batch},
+    value_source::{Calculation, CalculationInfo, Rotation, ValueSource},
+};
 
 /// GraphEvaluator
 #[derive(Clone, Debug)]
@@ -15,6 +19,8 @@ pub struct GraphEvaluator<C: PrimeField> {
     pub calculations: Vec<CalculationInfo>,
     /// Number of intermediates
     pub num_intermediates: usize,
+    #[cfg(feature = "cuda")]
+    inner: *const c_void,
 }
 
 impl<C: PrimeField> Default for GraphEvaluator<C> {
@@ -25,6 +31,8 @@ impl<C: PrimeField> Default for GraphEvaluator<C> {
             rotations: Vec::new(),
             calculations: Vec::new(),
             num_intermediates: 0,
+            #[cfg(feature = "cuda")]
+            inner: unsafe { create_graph() },
         }
     }
 }
@@ -67,12 +75,122 @@ impl<C: PrimeField> GraphEvaluator<C> {
             Some(existing_calculation) => ValueSource::Intermediate(existing_calculation.target),
             None => {
                 let target = self.num_intermediates;
-                self.calculations.push(CalculationInfo {
+                let info = CalculationInfo {
                     calculation,
                     target,
-                });
+                };
+                #[cfg(feature = "cuda")]
+                self.push(&info);
+                self.calculations.push(info);
                 self.num_intermediates += 1;
                 ValueSource::Intermediate(target)
+            }
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    fn push(&mut self, cal: &CalculationInfo) {
+        use crate::stub::{push_node, CalculationTag};
+
+        let target = cal.target;
+        match cal.calculation.clone() {
+            Calculation::Add(l, r) => {
+                let vs: Vec<ValueSource> = vec![l, r];
+                unsafe {
+                    push_node(
+                        self.inner,
+                        target,
+                        CalculationTag::Add,
+                        vs.as_ptr() as *const _,
+                        vs.len(),
+                    );
+                }
+            }
+            Calculation::Sub(l, r) => {
+                let vs: Vec<ValueSource> = vec![l, r];
+                unsafe {
+                    push_node(
+                        self.inner,
+                        target,
+                        CalculationTag::Sub,
+                        vs.as_ptr() as *const _,
+                        vs.len(),
+                    );
+                }
+            }
+            Calculation::Mul(l, r) => {
+                let vs: Vec<ValueSource> = vec![l, r];
+                unsafe {
+                    push_node(
+                        self.inner,
+                        target,
+                        CalculationTag::Mul,
+                        vs.as_ptr() as *const _,
+                        vs.len(),
+                    );
+                }
+            }
+            Calculation::Double(l) => {
+                let vs: Vec<ValueSource> = vec![l];
+                unsafe {
+                    push_node(
+                        self.inner,
+                        target,
+                        CalculationTag::Double,
+                        vs.as_ptr() as *const _,
+                        vs.len(),
+                    );
+                }
+            }
+            Calculation::Square(l) => {
+                let vs: Vec<ValueSource> = vec![l];
+                unsafe {
+                    push_node(
+                        self.inner,
+                        target,
+                        CalculationTag::Square,
+                        vs.as_ptr() as *const _,
+                        vs.len(),
+                    );
+                }
+            }
+            Calculation::Negate(l) => {
+                let vs: Vec<ValueSource> = vec![l];
+                unsafe {
+                    push_node(
+                        self.inner,
+                        target,
+                        CalculationTag::Negate,
+                        vs.as_ptr() as *const _,
+                        vs.len(),
+                    );
+                }
+            }
+            Calculation::Store(l) => unsafe {
+                let vs: Vec<ValueSource> = vec![l];
+                push_node(
+                    self.inner,
+                    target,
+                    CalculationTag::Store,
+                    vs.as_ptr() as *const _,
+                    vs.len(),
+                );
+            },
+            Calculation::Horner(l, v, r) => {
+                let mut vs: Vec<ValueSource> = vec![l];
+                for &i in v.iter() {
+                    vs.push(i)
+                }
+                vs.push(r);
+                unsafe {
+                    push_node(
+                        self.inner,
+                        target,
+                        CalculationTag::Horner,
+                        vs.as_ptr() as *const _,
+                        vs.len(),
+                    );
+                }
             }
         }
     }
@@ -117,6 +235,9 @@ impl<C: PrimeField> GraphEvaluator<C> {
             (((idx as i32) + (rot * rot_scale)).rem_euclid(isize)) as usize
         }
 
+        let num_intermediates = self.num_intermediates;
+        let calculations = &self.calculations;
+
         parallelize(values, |values, start| {
             for (i, value) in values.iter_mut().enumerate() {
                 let idx = start + i;
@@ -125,8 +246,8 @@ impl<C: PrimeField> GraphEvaluator<C> {
                     .map(|rot| get_rotation_idx(idx, *rot, rot_scale, isize))
                     .collect::<Vec<_>>();
 
-                let mut intermediates = vec![C::ZERO; self.num_intermediates];
-                for calc in self.calculations.iter() {
+                let mut intermediates = vec![C::ZERO; num_intermediates];
+                for calc in calculations.iter() {
                     intermediates[calc.target] = calc.calculation.eval(
                         &rotations,
                         &constants,
@@ -143,7 +264,7 @@ impl<C: PrimeField> GraphEvaluator<C> {
                     );
                 }
 
-                if let Some(calc) = self.calculations.last() {
+                if let Some(calc) = calculations.last() {
                     *value = intermediates[calc.target];
                 } else {
                     *value = C::ZERO;
@@ -166,42 +287,106 @@ impl<C: PrimeField> GraphEvaluator<C> {
         rot_scale: i32,
         isize: i32,
     ) {
-        trait Functor<C: PrimeField> {
-            fn invoke<P: Deref<Target = [C]> + Sync + Send>(
-                graph: &GraphEvaluator<C>,
-                values: &mut [C],
+        trait Functor<F: PrimeField> {
+            fn invoke<P: Deref<Target = [F]> + Sync + Send>(
+                graph: &GraphEvaluator<F>,
+                values: &mut [F],
                 fixed: &[P],
                 advice: &[P],
                 instance: &[P],
-                challenges: &[C],
-                beta: &C,
-                gamma: &C,
-                theta: &C,
-                y: &C,
+                challenges: &[F],
+                beta: &F,
+                gamma: &F,
+                theta: &F,
+                y: &F,
                 rot_scale: i32,
                 isize: i32,
             );
         }
 
-        impl<C: PrimeField> Functor<C> for () {
-            default fn invoke<P: Deref<Target = [C]> + Sync + Send>(
-                graph: &GraphEvaluator<C>,
-                values: &mut [C],
+        impl<F: PrimeField> Functor<F> for () {
+            default fn invoke<P: Deref<Target = [F]> + Sync + Send>(
+                graph: &GraphEvaluator<F>,
+                values: &mut [F],
                 fixed: &[P],
                 advice: &[P],
                 instance: &[P],
-                challenges: &[C],
-                beta: &C,
-                gamma: &C,
-                theta: &C,
-                y: &C,
+                challenges: &[F],
+                beta: &F,
+                gamma: &F,
+                theta: &F,
+                y: &F,
                 rot_scale: i32,
                 isize: i32,
             ) {
+                let now = std::time::Instant::now();
                 graph.evaluate_inner(
                     values, fixed, advice, instance, challenges, beta, gamma, theta, y, rot_scale,
                     isize,
                 );
+                println!("Eval(Host) elapsed: {:?}", now.elapsed());
+            }
+        }
+
+        #[cfg(feature = "cuda")]
+        impl Functor<Fr> for () {
+            fn invoke<P: Deref<Target = [Fr]> + Sync + Send>(
+                graph: &GraphEvaluator<Fr>,
+                values: &mut [Fr],
+                fixed: &[P],
+                advice: &[P],
+                instance: &[P],
+                challenges: &[Fr],
+                beta: &Fr,
+                gamma: &Fr,
+                theta: &Fr,
+                y: &Fr,
+                rot_scale: i32,
+                isize: i32,
+            ) {
+                unsafe {
+                    let f = |v: &[P]| -> (Vec<*const c_void>, usize, usize) {
+                        let ptr = v
+                            .iter()
+                            .map(|v| v.as_ptr() as *const c_void)
+                            .collect::<Vec<_>>();
+                        let col = v.len();
+                        let row = v.get(0).and_then(|v| Some(v.len())).unwrap_or(0);
+                        (ptr, col, row)
+                    };
+
+                    let (fixed, fiexd_col, fixed_row) = f(fixed);
+                    let (advice, advice_col, advice_row) = f(advice);
+                    let (instance, instance_col, instance_row) = f(instance);
+                    let now = std::time::Instant::now();
+                    evaluate_batch(
+                        values.as_mut_ptr() as *mut _,
+                        values.len(),
+                        graph.inner,
+                        graph.rotations.as_ptr(),
+                        graph.rotations.len(),
+                        graph.constants.as_ptr() as *const c_void,
+                        graph.constants.len(),
+                        fixed.as_ptr(),
+                        fiexd_col,
+                        fixed_row,
+                        advice.as_ptr(),
+                        advice_col,
+                        advice_row,
+                        instance.as_ptr(),
+                        instance_col,
+                        instance_row,
+                        challenges.as_ptr() as *const c_void,
+                        challenges.len(),
+                        beta as *const _ as *const c_void,
+                        gamma as *const _ as *const c_void,
+                        theta as *const _ as *const c_void,
+                        y as *const _ as *const c_void,
+                        rot_scale,
+                        isize,
+                    );
+                    println!("Eval elapsed: {:?}", now.elapsed());
+                }
             }
         }
 
@@ -211,41 +396,3 @@ impl<C: PrimeField> GraphEvaluator<C> {
         );
     }
 }
-
-// pub trait Evaluable<C: PrimeField> {
-//     fn evaluate<P: Deref<Target = [C]> + Sync + Send>(
-//         &self,
-//         values: &mut [C],
-//         fixed: &[P],
-//         advice: &[P],
-//         instance: &[P],
-//         challenges: &[C],
-//         beta: &C,
-//         gamma: &C,
-//         theta: &C,
-//         y: &C,
-//         rot_scale: i32,
-//         isize: i32,
-//     );
-// }
-
-// impl<C: PrimeField> Evaluable<C> for GraphEvaluator<C> {
-//     default fn evaluate<P: Deref<Target = [C]> + Sync + Send>(
-//         &self,
-//         values: &mut [C],
-//         fixed: &[P],
-//         advice: &[P],
-//         instance: &[P],
-//         challenges: &[C],
-//         beta: &C,
-//         gamma: &C,
-//         theta: &C,
-//         y: &C,
-//         rot_scale: i32,
-//         isize: i32,
-//     ) {
-//         self.evaluate_inner(
-//             values, fixed, advice, instance, challenges, beta, gamma, theta, y, rot_scale, isize,
-//         );
-//     };
-// }
