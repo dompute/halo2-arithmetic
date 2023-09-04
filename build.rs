@@ -16,7 +16,6 @@ fn main() {
     build
         .cuda(true)
         .opt_level(3)
-        .debug(true)
         .cudart("static")
         .file("libfam/src/base.cu")
         .file("libfam/src/stub.cu")
