@@ -3,6 +3,7 @@
 #[cfg(feature = "cuda")]
 mod stub;
 
+pub mod arithmetic;
 pub mod graph;
 
 pub mod value_source;

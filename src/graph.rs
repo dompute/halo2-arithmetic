@@ -1,12 +1,11 @@
 use std::{ffi::c_void, ops::Deref};
 
 use ff::PrimeField;
+
+#[cfg(feature = "cuda")]
 use halo2curves::bn256::Fr;
 
-use crate::{
-    stub::{create_graph, evaluate_batch},
-    value_source::{Calculation, CalculationInfo, Rotation, ValueSource},
-};
+use crate::value_source::{Calculation, CalculationInfo, Rotation, ValueSource};
 
 /// GraphEvaluator
 #[derive(Clone, Debug)]
@@ -23,6 +22,15 @@ pub struct GraphEvaluator<C: PrimeField> {
     inner: *const c_void,
 }
 
+#[cfg(feature = "cuda")]
+impl<C: PrimeField> Drop for GraphEvaluator<C> {
+    fn drop(&mut self) {
+        unsafe {
+            crate::stub::delete_graph(self.inner);
+        }
+    }
+}
+
 impl<C: PrimeField> Default for GraphEvaluator<C> {
     fn default() -> Self {
         Self {
@@ -32,7 +40,7 @@ impl<C: PrimeField> Default for GraphEvaluator<C> {
             calculations: Vec::new(),
             num_intermediates: 0,
             #[cfg(feature = "cuda")]
-            inner: unsafe { create_graph() },
+            inner: unsafe { crate::stub::create_graph() },
         }
     }
 }
@@ -320,7 +328,7 @@ impl<C: PrimeField> GraphEvaluator<C> {
                 y: &F,
                 rot_scale: i32,
                 isize: i32,
-                round: usize,
+                _round: usize,
             ) {
                 let now = std::time::Instant::now();
                 graph.evaluate_inner(
@@ -364,7 +372,7 @@ impl<C: PrimeField> GraphEvaluator<C> {
                     let (instance, instance_col, instance_row) = f(instance);
                     #[cfg(feature = "profile")]
                     let now = std::time::Instant::now();
-                    evaluate_batch(
+                    crate::stub::evaluate_batch(
                         values.as_mut_ptr() as *mut _,
                         values.len(),
                         graph.inner,

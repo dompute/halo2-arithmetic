@@ -19,7 +19,6 @@ pub enum CalculationTag {
 extern "C" {
     pub fn create_graph() -> *const c_void;
     pub fn delete_graph(graph: *const c_void);
-    pub fn reset_graph(graph: *const c_void, num: usize);
 
     pub fn push_node(
         graph: *const c_void,
@@ -58,5 +57,5 @@ extern "C" {
 
     pub fn msm_fr_g1(bases: *const c_void, scalars: *const c_void, buf_len: u32, out: *mut c_void);
 
-    pub fn fft_fr(values: *mut U256, twiddles: *const U256, log_n: u32);
+    pub fn fft_fr(values: *mut c_void, twiddles: *const c_void, log_n: u32);
 }
