@@ -1,3 +1,5 @@
+#![feature(min_specialization)]
+
 #[cfg(feature = "cuda")]
 mod stub;
 

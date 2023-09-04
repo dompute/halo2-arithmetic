@@ -77,7 +77,7 @@ impl<C: PrimeField> GraphEvaluator<C> {
         }
     }
 
-    pub fn evaluate<P: Deref<Target = [C]> + Sync + Send>(
+    fn evaluate_inner<P: Deref<Target = [C]> + Sync + Send>(
         &self,
         values: &mut [C],
         fixed: &[P],
@@ -151,4 +151,101 @@ impl<C: PrimeField> GraphEvaluator<C> {
             }
         })
     }
+
+    pub fn evaluate<P: Deref<Target = [C]> + Sync + Send>(
+        &self,
+        values: &mut [C],
+        fixed: &[P],
+        advice: &[P],
+        instance: &[P],
+        challenges: &[C],
+        beta: &C,
+        gamma: &C,
+        theta: &C,
+        y: &C,
+        rot_scale: i32,
+        isize: i32,
+    ) {
+        trait Functor<C: PrimeField> {
+            fn invoke<P: Deref<Target = [C]> + Sync + Send>(
+                graph: &GraphEvaluator<C>,
+                values: &mut [C],
+                fixed: &[P],
+                advice: &[P],
+                instance: &[P],
+                challenges: &[C],
+                beta: &C,
+                gamma: &C,
+                theta: &C,
+                y: &C,
+                rot_scale: i32,
+                isize: i32,
+            );
+        }
+
+        impl<C: PrimeField> Functor<C> for () {
+            default fn invoke<P: Deref<Target = [C]> + Sync + Send>(
+                graph: &GraphEvaluator<C>,
+                values: &mut [C],
+                fixed: &[P],
+                advice: &[P],
+                instance: &[P],
+                challenges: &[C],
+                beta: &C,
+                gamma: &C,
+                theta: &C,
+                y: &C,
+                rot_scale: i32,
+                isize: i32,
+            ) {
+                graph.evaluate_inner(
+                    values, fixed, advice, instance, challenges, beta, gamma, theta, y, rot_scale,
+                    isize,
+                );
+            }
+        }
+
+        <() as Functor<C>>::invoke(
+            self, values, fixed, advice, instance, challenges, beta, gamma, theta, y, rot_scale,
+            isize,
+        );
+    }
 }
+
+// pub trait Evaluable<C: PrimeField> {
+//     fn evaluate<P: Deref<Target = [C]> + Sync + Send>(
+//         &self,
+//         values: &mut [C],
+//         fixed: &[P],
+//         advice: &[P],
+//         instance: &[P],
+//         challenges: &[C],
+//         beta: &C,
+//         gamma: &C,
+//         theta: &C,
+//         y: &C,
+//         rot_scale: i32,
+//         isize: i32,
+//     );
+// }
+
+// impl<C: PrimeField> Evaluable<C> for GraphEvaluator<C> {
+//     default fn evaluate<P: Deref<Target = [C]> + Sync + Send>(
+//         &self,
+//         values: &mut [C],
+//         fixed: &[P],
+//         advice: &[P],
+//         instance: &[P],
+//         challenges: &[C],
+//         beta: &C,
+//         gamma: &C,
+//         theta: &C,
+//         y: &C,
+//         rot_scale: i32,
+//         isize: i32,
+//     ) {
+//         self.evaluate_inner(
+//             values, fixed, advice, instance, challenges, beta, gamma, theta, y, rot_scale, isize,
+//         );
+//     };
+// }
