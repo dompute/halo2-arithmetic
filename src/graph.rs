@@ -286,6 +286,7 @@ impl<C: PrimeField> GraphEvaluator<C> {
         y: &C,
         rot_scale: i32,
         isize: i32,
+        round: usize,
     ) {
         trait Functor<F: PrimeField> {
             fn invoke<P: Deref<Target = [F]> + Sync + Send>(
@@ -301,6 +302,7 @@ impl<C: PrimeField> GraphEvaluator<C> {
                 y: &F,
                 rot_scale: i32,
                 isize: i32,
+                round: usize,
             );
         }
 
@@ -318,6 +320,7 @@ impl<C: PrimeField> GraphEvaluator<C> {
                 y: &F,
                 rot_scale: i32,
                 isize: i32,
+                round: usize,
             ) {
                 let now = std::time::Instant::now();
                 graph.evaluate_inner(
@@ -343,6 +346,7 @@ impl<C: PrimeField> GraphEvaluator<C> {
                 y: &Fr,
                 rot_scale: i32,
                 isize: i32,
+                round: usize,
             ) {
                 unsafe {
                     let f = |v: &[P]| -> (Vec<*const c_void>, usize, usize) {
@@ -358,6 +362,7 @@ impl<C: PrimeField> GraphEvaluator<C> {
                     let (fixed, fiexd_col, fixed_row) = f(fixed);
                     let (advice, advice_col, advice_row) = f(advice);
                     let (instance, instance_col, instance_row) = f(instance);
+                    #[cfg(feature = "profile")]
                     let now = std::time::Instant::now();
                     evaluate_batch(
                         values.as_mut_ptr() as *mut _,
@@ -384,7 +389,9 @@ impl<C: PrimeField> GraphEvaluator<C> {
                         y as *const _ as *const c_void,
                         rot_scale,
                         isize,
+                        round,
                     );
+                    #[cfg(feature = "profile")]
                     println!("Eval elapsed: {:?}", now.elapsed());
                 }
             }
@@ -392,7 +399,7 @@ impl<C: PrimeField> GraphEvaluator<C> {
 
         <() as Functor<C>>::invoke(
             self, values, fixed, advice, instance, challenges, beta, gamma, theta, y, rot_scale,
-            isize,
+            isize, round,
         );
     }
 }

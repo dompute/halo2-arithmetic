@@ -53,6 +53,7 @@ extern "C" {
         y: *const c_void,
         rot_scale: i32,
         isize: i32,
+        round: usize,
     );
 
     pub fn msm_fr_g1(bases: *const c_void, scalars: *const c_void, buf_len: u32, out: *mut c_void);
