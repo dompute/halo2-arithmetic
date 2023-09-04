@@ -22,14 +22,14 @@ pub struct GraphEvaluator<C: PrimeField> {
     inner: *const c_void,
 }
 
-#[cfg(feature = "cuda")]
-impl<C: PrimeField> Drop for GraphEvaluator<C> {
-    fn drop(&mut self) {
-        unsafe {
-            crate::stub::delete_graph(self.inner);
-        }
-    }
-}
+// #[cfg(feature = "cuda")]
+// impl<C: PrimeField> Drop for GraphEvaluator<C> {
+//     fn drop(&mut self) {
+//         unsafe {
+//             crate::stub::delete_graph(self.inner);
+//         }
+//     }
+// }
 
 impl<C: PrimeField> Default for GraphEvaluator<C> {
     fn default() -> Self {
