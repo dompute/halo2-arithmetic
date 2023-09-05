@@ -1,17 +1,19 @@
 use std::{ffi::c_void, ops::Deref};
 
-use ff::PrimeField;
+use ff::Field;
 
 #[cfg(feature = "cuda")]
 use halo2curves::bn256::Fr;
+
+use halo2curves::{bn256::G1Affine, CurveAffine};
 
 use crate::value_source::{Calculation, CalculationInfo, Rotation, ValueSource};
 
 /// GraphEvaluator
 #[derive(Clone, Debug)]
-pub struct GraphEvaluator<C: PrimeField> {
+pub struct GraphEvaluator<C: CurveAffine> {
     /// Constants
-    pub constants: Vec<C>,
+    pub constants: Vec<C::ScalarExt>,
     /// Rotations
     pub rotations: Vec<i32>,
     /// Calculations
@@ -31,11 +33,15 @@ pub struct GraphEvaluator<C: PrimeField> {
 //     }
 // }
 
-impl<C: PrimeField> Default for GraphEvaluator<C> {
+impl<C: CurveAffine> Default for GraphEvaluator<C> {
     fn default() -> Self {
         Self {
             // Fixed positions to allow easy access
-            constants: vec![C::ZERO, C::ONE, C::from(2u64)],
+            constants: vec![
+                C::ScalarExt::zero(),
+                C::ScalarExt::one(),
+                C::ScalarExt::from(2u64),
+            ],
             rotations: Vec::new(),
             calculations: Vec::new(),
             num_intermediates: 0,
@@ -45,7 +51,7 @@ impl<C: PrimeField> Default for GraphEvaluator<C> {
     }
 }
 
-impl<C: PrimeField> GraphEvaluator<C> {
+impl<C: CurveAffine> GraphEvaluator<C> {
     /// Adds a rotation
     pub fn add_rotation(&mut self, rotation: &Rotation) -> usize {
         let position = self.rotations.iter().position(|&c| c == rotation.0);
@@ -59,7 +65,7 @@ impl<C: PrimeField> GraphEvaluator<C> {
     }
 
     /// Adds a constant
-    pub fn add_constant(&mut self, constant: &C) -> ValueSource {
+    pub fn add_constant(&mut self, constant: &C::ScalarExt) -> ValueSource {
         let position = self.constants.iter().position(|&c| c == *constant);
         ValueSource::Constant(match position {
             Some(pos) => pos,
@@ -203,17 +209,17 @@ impl<C: PrimeField> GraphEvaluator<C> {
         }
     }
 
-    fn evaluate_inner<P: Deref<Target = [C]> + Sync + Send>(
+    fn evaluate_inner<P: Deref<Target = [C::ScalarExt]> + Sync + Send>(
         &self,
-        values: &mut [C],
+        values: &mut [C::ScalarExt],
         fixed: &[P],
         advice: &[P],
         instance: &[P],
-        challenges: &[C],
-        beta: &C,
-        gamma: &C,
-        theta: &C,
-        y: &C,
+        challenges: &[C::ScalarExt],
+        beta: &C::ScalarExt,
+        gamma: &C::ScalarExt,
+        theta: &C::ScalarExt,
+        y: &C::ScalarExt,
         rot_scale: i32,
         isize: i32,
     ) {
@@ -254,7 +260,7 @@ impl<C: PrimeField> GraphEvaluator<C> {
                     .map(|rot| get_rotation_idx(idx, *rot, rot_scale, isize))
                     .collect::<Vec<_>>();
 
-                let mut intermediates = vec![C::ZERO; num_intermediates];
+                let mut intermediates = vec![C::ScalarExt::zero(); num_intermediates];
                 for calc in calculations.iter() {
                     intermediates[calc.target] = calc.calculation.eval(
                         &rotations,
@@ -275,57 +281,57 @@ impl<C: PrimeField> GraphEvaluator<C> {
                 if let Some(calc) = calculations.last() {
                     *value = intermediates[calc.target];
                 } else {
-                    *value = C::ZERO;
+                    *value = C::ScalarExt::zero();
                 }
             }
         })
     }
 
-    pub fn evaluate<P: Deref<Target = [C]> + Sync + Send>(
+    pub fn evaluate<P: Deref<Target = [C::ScalarExt]> + Sync + Send>(
         &self,
-        values: &mut [C],
+        values: &mut [C::ScalarExt],
         fixed: &[P],
         advice: &[P],
         instance: &[P],
-        challenges: &[C],
-        beta: &C,
-        gamma: &C,
-        theta: &C,
-        y: &C,
+        challenges: &[C::ScalarExt],
+        beta: &C::ScalarExt,
+        gamma: &C::ScalarExt,
+        theta: &C::ScalarExt,
+        y: &C::ScalarExt,
         rot_scale: i32,
         isize: i32,
         round: usize,
     ) {
-        trait Functor<F: PrimeField> {
-            fn invoke<P: Deref<Target = [F]> + Sync + Send>(
+        trait Functor<F: CurveAffine> {
+            fn invoke<P: Deref<Target = [F::ScalarExt]> + Sync + Send>(
                 graph: &GraphEvaluator<F>,
-                values: &mut [F],
+                values: &mut [F::ScalarExt],
                 fixed: &[P],
                 advice: &[P],
                 instance: &[P],
-                challenges: &[F],
-                beta: &F,
-                gamma: &F,
-                theta: &F,
-                y: &F,
+                challenges: &[F::ScalarExt],
+                beta: &F::ScalarExt,
+                gamma: &F::ScalarExt,
+                theta: &F::ScalarExt,
+                y: &F::ScalarExt,
                 rot_scale: i32,
                 isize: i32,
                 round: usize,
             );
         }
 
-        impl<F: PrimeField> Functor<F> for () {
-            default fn invoke<P: Deref<Target = [F]> + Sync + Send>(
+        impl<F: CurveAffine> Functor<F> for () {
+            default fn invoke<P: Deref<Target = [F::ScalarExt]> + Sync + Send>(
                 graph: &GraphEvaluator<F>,
-                values: &mut [F],
+                values: &mut [F::ScalarExt],
                 fixed: &[P],
                 advice: &[P],
                 instance: &[P],
-                challenges: &[F],
-                beta: &F,
-                gamma: &F,
-                theta: &F,
-                y: &F,
+                challenges: &[F::ScalarExt],
+                beta: &F::ScalarExt,
+                gamma: &F::ScalarExt,
+                theta: &F::ScalarExt,
+                y: &F::ScalarExt,
                 rot_scale: i32,
                 isize: i32,
                 _round: usize,
@@ -340,7 +346,7 @@ impl<C: PrimeField> GraphEvaluator<C> {
         }
 
         #[cfg(feature = "cuda")]
-        impl Functor<Fr> for () {
+        impl Functor<G1Affine> for () {
             fn invoke<P: Deref<Target = [Fr]> + Sync + Send>(
                 graph: &GraphEvaluator<Fr>,
                 values: &mut [Fr],

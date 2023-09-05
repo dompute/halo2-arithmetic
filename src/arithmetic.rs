@@ -1,24 +1,14 @@
-use ff::{Field, PrimeField};
-use group::{Group, GroupOpsOwned, ScalarMulOwned};
-use halo2curves::CurveAffine;
+// use ff::{Field, PrimeField};
+// use group::Group as GroupTrait;
+
+use halo2curves::{
+    group::ff::{Field, PrimeField},
+    group::Group as GroupTrait,
+    CurveAffine, Group,
+};
 
 #[cfg(feature = "cuda")]
 use halo2curves::bn256::{Fr, G1Affine, G1};
-
-/// This represents an element of a group with basic operations that can be
-/// performed. This allows an FFT implementation (for example) to operate
-/// generically over either a field or elliptic curve group.
-pub trait FftGroup<Scalar: Field>:
-    Copy + Send + Sync + 'static + GroupOpsOwned + ScalarMulOwned<Scalar>
-{
-}
-
-impl<T, Scalar> FftGroup<Scalar> for T
-where
-    Scalar: Field,
-    T: Copy + Send + Sync + 'static + GroupOpsOwned + ScalarMulOwned<Scalar>,
-{
-}
 
 fn multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut C::Curve) {
     let coeffs: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
@@ -166,17 +156,17 @@ pub fn best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
 }
 
 /// This perform recursive butterfly arithmetic
-fn recursive_butterfly_arithmetic<Scalar: Field, G: FftGroup<Scalar>>(
+fn recursive_butterfly_arithmetic<G: Group>(
     a: &mut [G],
     n: usize,
     twiddle_chunk: usize,
-    twiddles: &[Scalar],
+    twiddles: &[G::Scalar],
 ) {
     if n == 2 {
         let t = a[1];
         a[1] = a[0];
-        a[0] += &t;
-        a[1] -= &t;
+        a[0].group_add(&t);
+        a[1].group_sub(&t);
     } else {
         let (left, right) = a.split_at_mut(n / 2);
         rayon::join(
@@ -189,23 +179,23 @@ fn recursive_butterfly_arithmetic<Scalar: Field, G: FftGroup<Scalar>>(
         let (b, right) = right.split_at_mut(1);
         let t = b[0];
         b[0] = a[0];
-        a[0] += &t;
-        b[0] -= &t;
+        a[0].group_add(&t);
+        b[0].group_sub(&t);
 
         left.iter_mut()
             .zip(right.iter_mut())
             .enumerate()
             .for_each(|(i, (a, b))| {
                 let mut t = *b;
-                t *= &twiddles[(i + 1) * twiddle_chunk];
+                t.group_scale(&twiddles[(i + 1) * twiddle_chunk]);
                 *b = *a;
-                *a += &t;
-                *b -= &t;
+                a.group_add(&t);
+                b.group_sub(&t);
             });
     }
 }
 
-fn best_fft_inner<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_n: u32) {
+fn best_fft_inner<G: Group>(a: &mut [G], omega: G::Scalar, log_n: u32) {
     fn bitreverse(mut n: usize, l: usize) -> usize {
         let mut r = 0;
         for _ in 0..l {
@@ -241,7 +231,7 @@ fn best_fft_inner<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar
 
     // precompute twiddle factors
     let twiddles: Vec<_> = (0..(n / 2) as usize)
-        .scan(Scalar::ONE, |w, _| {
+        .scan(G::Scalar::one(), |w, _| {
             let tw = *w;
             *w *= &omega;
             Some(tw)
@@ -260,19 +250,18 @@ fn best_fft_inner<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar
                 let (b, right) = right.split_at_mut(1);
                 let t = b[0];
                 b[0] = a[0];
-                a[0] += &t;
-                b[0] -= &t;
+                a[0].group_add(&t);
+                b[0].group_sub(&t);
 
                 left.iter_mut()
                     .zip(right.iter_mut())
                     .enumerate()
                     .for_each(|(i, (a, b))| {
-                        // let mut t = *b;
-                        // t *= &twiddles[(i + 1) * twiddle_chunk];
-                        let t = *b * &twiddles[(i + 1) * twiddle_chunk];
+                        let mut t = *b;
+                        t.group_scale(&twiddles[(i + 1) * twiddle_chunk]);
                         *b = *a;
-                        *a += &t;
-                        *b -= &t;
+                        a.group_add(&t);
+                        b.group_sub(&t);
                     });
             });
             chunk *= 2;
@@ -293,25 +282,25 @@ fn best_fft_inner<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar
 /// by $n$.
 ///
 /// This will use multithreading if beneficial.
-pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_n: u32) {
-    trait Functor<Scalar: Field, G: FftGroup<Scalar>> {
-        fn invoke(a: &mut [G], omega: Scalar, log_n: u32);
+pub fn best_fft<G: Group>(a: &mut [G], omega: G::Scalar, log_n: u32) {
+    trait Functor<G: Group> {
+        fn invoke(a: &mut [G], omega: G::Scalar, log_n: u32);
     }
 
-    impl<Scalar: Field, G: FftGroup<Scalar>> Functor<Scalar, G> for () {
-        default fn invoke(a: &mut [G], omega: Scalar, log_n: u32) {
+    impl<G: Group> Functor<G> for () {
+        default fn invoke(a: &mut [G], omega: G::Scalar, log_n: u32) {
             best_fft_inner(a, omega, log_n)
         }
     }
 
     #[cfg(feature = "cuda")]
-    impl Functor<Fr, Fr> for () {
+    impl Functor<Fr> for () {
         fn invoke(a: &mut [Fr], omega: Fr, log_n: u32) {
             cuda::fft(a, omega, log_n);
         }
     }
 
-    <() as Functor<Scalar, G>>::invoke(a, omega, log_n)
+    <() as Functor<G>>::invoke(a, omega, log_n)
 }
 
 #[cfg(feature = "cuda")]
