@@ -9,17 +9,17 @@ edition = "2021"
 ff = "0.12"
 group = "0.12"
 rayon = "1.7.0"
-serde = { version = "1.0.160", features = ["derive"] }
+serde = { version = "^1.0.159", features = ["derive"] }
 halo2curves = { git = 'https://github.com/scroll-tech/halo2curves', branch = "0.3.1-derive-serde" }
 
 [dev-dependencies]
 rand = "0.8.5"
 
 [build-dependencies]
-cc = "1.0.82"
+cc = "^1.0"
 # cmake = "0.1.50"
 
 [features]
 cuda = []
 profile = []
-default = []
+default = ["cuda", "profile"]

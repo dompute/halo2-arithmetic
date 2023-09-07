@@ -12,21 +12,18 @@ fn main() {
     //     _ => "Debug",
     // };
 
-    let mut build = cc::Build::new();
-    build
+    cc::Build::new()
         .cuda(true)
         .opt_level(3)
         .cudart("static")
-        .file("libfam/src/base.cu")
         .file("libfam/src/stub.cu")
-        .file("libfam/src/arithmetic/msm.cu");
-    println!("cargo:warning={:?}", build);
-    build.compile("libfam.a");
+        .compile("libfam.a");
 
-    println!("cargo:rustc-link-search=native=/opt/cuda/lib64/stubs");
-    println!("cargo:rustc-link-lib=cuda");
-
-    println!("cargo:rerun-if-changed=libfam/src/base.cu");
+    println!("cargo:rerun-if-changed=libfam/src/arithmetic.cuh");
+    println!("cargo:rerun-if-changed=libfam/src/fft.cuh");
+    println!("cargo:rerun-if-changed=libfam/src/ff.cuh");
+    println!("cargo:rerun-if-changed=libfam/src/bn256.cuh");
+    println!("cargo:rerun-if-changed=libfam/src/pippenger.cuh");
+    println!("cargo:rerun-if-changed=libfam/src/graph.cuh");
     println!("cargo:rerun-if-changed=libfam/src/stub.cu");
-    println!("cargo:rerun-if-changed=libfam/src/arithmetic/msm.cu");
 }

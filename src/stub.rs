@@ -55,7 +55,7 @@ extern "C" {
         round: usize,
     );
 
-    pub fn msm_fr_g1(bases: *const c_void, scalars: *const c_void, buf_len: u32, out: *mut c_void);
+    pub fn msm_fr_g1(scalars: *const c_void, bases: *const c_void, buf_len: u32, out: *mut c_void);
 
     pub fn fft_fr(values: *mut c_void, twiddles: *const c_void, log_n: u32);
 }

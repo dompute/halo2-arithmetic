@@ -293,12 +293,12 @@ pub fn best_fft<G: Group>(a: &mut [G], omega: G::Scalar, log_n: u32) {
         }
     }
 
-    #[cfg(feature = "cuda")]
-    impl Functor<Fr> for () {
-        fn invoke(a: &mut [Fr], omega: Fr, log_n: u32) {
-            cuda::fft(a, omega, log_n);
-        }
-    }
+    // #[cfg(feature = "cuda")]
+    // impl Functor<Fr> for () {
+    //     fn invoke(a: &mut [Fr], omega: Fr, log_n: u32) {
+    //         cuda::fft(a, omega, log_n);
+    //     }
+    // }
 
     <() as Functor<G>>::invoke(a, omega, log_n)
 }
@@ -307,17 +307,17 @@ pub fn best_fft<G: Group>(a: &mut [G], omega: G::Scalar, log_n: u32) {
 mod cuda {
     use std::ffi::c_void;
 
+    use ff::PrimeField;
     use group::{prime::PrimeCurveAffine, Group};
     use halo2curves::bn256::{Fr, G1Affine, G1};
 
     pub fn msm(scalars: &[Fr], bases: &[G1Affine]) -> G1 {
-        let bases = bases.iter().map(|a| a.to_curve()).collect::<Vec<_>>();
         let mut out = G1::identity();
         let buf_len = bases.len();
         unsafe {
             crate::stub::msm_fr_g1(
-                bases.as_ptr() as *const c_void,
                 scalars.as_ptr() as *const c_void,
+                bases.as_ptr() as *const c_void,
                 buf_len as u32,
                 &mut out as *mut _ as *mut c_void,
             );
@@ -346,10 +346,12 @@ mod cuda {
 
     #[cfg(test)]
     mod tests {
+        use std::ops::Mul;
+
         use ff::Field;
 
         use group::Curve;
-        use halo2curves::bn256::{Fq, Fr, G1Affine};
+        use halo2curves::bn256::{Fq, Fr, G1Affine, G1};
         use rand::rngs::OsRng;
 
         use crate::arithmetic::{best_fft_inner, best_multiexp_inner};
@@ -381,38 +383,42 @@ mod cuda {
         #[test]
         fn test_msm() {
             const N: usize = 1 << 18;
-            // let scalars = (0..N).map(|_| Fr::random(OsRng)).collect::<Vec<_>>();
-            // let bases = (0..N).map(|_| G1Affine::random(OsRng)).collect::<Vec<_>>();
-            let scalars = (0..N)
-                .map(|_| {
-                    fr_from_str("1cf142772092bc7e45d20c5bf3fa86f699342979e082055af5558902c9dbec17")
-                })
-                .collect::<Vec<_>>();
-            let bases = (0..N).map(|_| G1Affine::generator()).collect::<Vec<_>>();
+            let scalars = (0..N).map(|_| Fr::random(OsRng)).collect::<Vec<_>>();
+            let bases = (0..N).map(|_| G1Affine::random(OsRng)).collect::<Vec<_>>();
+
             for i in 0..100 {
+                let now = std::time::Instant::now();
                 let gpu = super::msm(&scalars, &bases);
+                println!("GPU: {:?}", now.elapsed());
+
+                let now = std::time::Instant::now();
                 let cpu = best_multiexp_inner(&scalars, &bases);
+                println!("CPU: {:?}", now.elapsed());
                 assert_eq!(gpu.to_affine(), cpu.to_affine());
-                println!("{}:: {:?}, {:?}", i, gpu.to_affine(), cpu.to_affine());
             }
         }
 
         #[test]
         fn test_fft() {
-            const K: u32 = 4u32;
-            let mut g_a = (0..(1 << K))
-                .map(|i| Fr::from_raw([i as u64, 0, 0, 0]))
-                .collect::<Vec<_>>();
-            let mut g_b = g_a.clone();
-
+            const K: u32 = 18u32;
+            let ori = (0..(1 << K)).map(|i| Fr::random(OsRng)).collect::<Vec<_>>();
             let omega = Fr::random(OsRng);
 
-            best_fft_inner(&mut g_a, omega, K);
-            super::fft(&mut g_b, omega, K);
+            for i in 0..100 {
+                let mut g_a = ori.clone();
+                let mut g_b = ori.clone();
 
-            for (i, (cpu, gpu)) in g_a.iter().zip(g_b.iter()).enumerate() {
-                println!("{}", i);
-                assert_eq!(cpu, gpu);
+                let now = std::time::Instant::now();
+                best_fft_inner(&mut g_a, omega, K);
+                println!("CPU: {:?}", now.elapsed());
+
+                let now = std::time::Instant::now();
+                super::fft(&mut g_b, omega, K);
+                println!("GPU: {:?}", now.elapsed());
+
+                for (i, (cpu, gpu)) in g_a.iter().zip(g_b.iter()).enumerate() {
+                    assert_eq!(cpu, gpu);
+                }
             }
         }
     }

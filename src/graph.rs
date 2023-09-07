@@ -348,7 +348,7 @@ impl<C: CurveAffine> GraphEvaluator<C> {
         #[cfg(feature = "cuda")]
         impl Functor<G1Affine> for () {
             fn invoke<P: Deref<Target = [Fr]> + Sync + Send>(
-                graph: &GraphEvaluator<Fr>,
+                graph: &GraphEvaluator<G1Affine>,
                 values: &mut [Fr],
                 fixed: &[P],
                 advice: &[P],
