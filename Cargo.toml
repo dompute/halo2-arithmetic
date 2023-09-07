@@ -22,4 +22,4 @@ cc = "1.0.82"
 [features]
 cuda = []
 profile = []
-default = []
+default = ["cuda", "profile"]
