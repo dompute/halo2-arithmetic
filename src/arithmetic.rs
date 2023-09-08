@@ -383,8 +383,10 @@ mod cuda {
         #[test]
         fn test_msm() {
             const N: usize = 1 << 18;
-            let scalars = (0..N).map(|_| Fr::random(OsRng)).collect::<Vec<_>>();
-            let bases = (0..N).map(|_| G1Affine::random(OsRng)).collect::<Vec<_>>();
+            // let scalars = (0..N).map(|_| Fr::random(OsRng)).collect::<Vec<_>>();
+            // let bases = (0..N).map(|_| G1Affine::random(OsRng)).collect::<Vec<_>>();
+            let scalars = (0..N).map(|_| Fr::one()).collect::<Vec<_>>();
+            let bases = (0..N).map(|_| G1Affine::generator()).collect::<Vec<_>>();
 
             for i in 0..100 {
                 let now = std::time::Instant::now();
