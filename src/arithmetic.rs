@@ -155,12 +155,12 @@ pub fn best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
         }
     }
 
-    // #[cfg(feature = "cuda")]
-    // impl Functor<G1Affine> for () {
-    //     fn invoke(coeffs: &[Fr], bases: &[G1Affine]) -> G1 {
-    //         cuda::msm(coeffs, bases)
-    //     }
-    // }
+    #[cfg(feature = "cuda")]
+    impl Functor<G1Affine> for () {
+        fn invoke(coeffs: &[Fr], bases: &[G1Affine]) -> G1 {
+            cuda::msm(coeffs, bases)
+        }
+    }
 
     <() as Functor<C>>::invoke(coeffs, bases)
 }
@@ -391,6 +391,8 @@ mod cuda {
         #[test]
         fn test_msm() {
             const N: usize = 1 << 18;
+            // let scalars = (0..N).map(|_| Fr::random(OsRng)).collect::<Vec<_>>();
+            // let bases = (0..N).map(|_| G1Affine::random(OsRng)).collect::<Vec<_>>();
             let scalars = (0..N).map(|_| Fr::one()).collect::<Vec<_>>();
             let bases = (0..N).map(|_| G1Affine::generator()).collect::<Vec<_>>();
 
