@@ -348,71 +348,71 @@ impl<C: CurveAffine> GraphEvaluator<C> {
             }
         }
 
-        #[cfg(feature = "cuda")]
-        impl Functor<G1Affine> for () {
-            fn invoke<P: Deref<Target = [Fr]> + Sync + Send>(
-                graph: &GraphEvaluator<G1Affine>,
-                values: &mut [Fr],
-                fixed: &[P],
-                advice: &[P],
-                instance: &[P],
-                challenges: &[Fr],
-                beta: &Fr,
-                gamma: &Fr,
-                theta: &Fr,
-                y: &Fr,
-                rot_scale: i32,
-                isize: i32,
-                round: usize,
-            ) {
-                unsafe {
-                    let f = |v: &[P]| -> (Vec<*const c_void>, usize, usize) {
-                        let ptr = v
-                            .iter()
-                            .map(|v| v.as_ptr() as *const c_void)
-                            .collect::<Vec<_>>();
-                        let col = v.len();
-                        let row = v.get(0).and_then(|v| Some(v.len())).unwrap_or(0);
-                        (ptr, col, row)
-                    };
+        // #[cfg(feature = "cuda")]
+        // impl Functor<G1Affine> for () {
+        //     fn invoke<P: Deref<Target = [Fr]> + Sync + Send>(
+        //         graph: &GraphEvaluator<G1Affine>,
+        //         values: &mut [Fr],
+        //         fixed: &[P],
+        //         advice: &[P],
+        //         instance: &[P],
+        //         challenges: &[Fr],
+        //         beta: &Fr,
+        //         gamma: &Fr,
+        //         theta: &Fr,
+        //         y: &Fr,
+        //         rot_scale: i32,
+        //         isize: i32,
+        //         round: usize,
+        //     ) {
+        //         unsafe {
+        //             let f = |v: &[P]| -> (Vec<*const c_void>, usize, usize) {
+        //                 let ptr = v
+        //                     .iter()
+        //                     .map(|v| v.as_ptr() as *const c_void)
+        //                     .collect::<Vec<_>>();
+        //                 let col = v.len();
+        //                 let row = v.get(0).and_then(|v| Some(v.len())).unwrap_or(0);
+        //                 (ptr, col, row)
+        //             };
 
-                    let (fixed, fiexd_col, fixed_row) = f(fixed);
-                    let (advice, advice_col, advice_row) = f(advice);
-                    let (instance, instance_col, instance_row) = f(instance);
-                    #[cfg(feature = "profile")]
-                    let now = std::time::Instant::now();
-                    crate::stub::evaluate_batch(
-                        values.as_mut_ptr() as *mut _,
-                        values.len(),
-                        graph.inner,
-                        graph.rotations.as_ptr(),
-                        graph.rotations.len(),
-                        graph.constants.as_ptr() as *const c_void,
-                        graph.constants.len(),
-                        fixed.as_ptr(),
-                        fiexd_col,
-                        fixed_row,
-                        advice.as_ptr(),
-                        advice_col,
-                        advice_row,
-                        instance.as_ptr(),
-                        instance_col,
-                        instance_row,
-                        challenges.as_ptr() as *const c_void,
-                        challenges.len(),
-                        beta as *const _ as *const c_void,
-                        gamma as *const _ as *const c_void,
-                        theta as *const _ as *const c_void,
-                        y as *const _ as *const c_void,
-                        rot_scale,
-                        isize,
-                        round,
-                    );
-                    #[cfg(feature = "profile")]
-                    println!("Eval elapsed: {:?}", now.elapsed());
-                }
-            }
-        }
+        //             let (fixed, fiexd_col, fixed_row) = f(fixed);
+        //             let (advice, advice_col, advice_row) = f(advice);
+        //             let (instance, instance_col, instance_row) = f(instance);
+        //             #[cfg(feature = "profile")]
+        //             let now = std::time::Instant::now();
+        //             crate::stub::evaluate_batch(
+        //                 values.as_mut_ptr() as *mut _,
+        //                 values.len(),
+        //                 graph.inner,
+        //                 graph.rotations.as_ptr(),
+        //                 graph.rotations.len(),
+        //                 graph.constants.as_ptr() as *const c_void,
+        //                 graph.constants.len(),
+        //                 fixed.as_ptr(),
+        //                 fiexd_col,
+        //                 fixed_row,
+        //                 advice.as_ptr(),
+        //                 advice_col,
+        //                 advice_row,
+        //                 instance.as_ptr(),
+        //                 instance_col,
+        //                 instance_row,
+        //                 challenges.as_ptr() as *const c_void,
+        //                 challenges.len(),
+        //                 beta as *const _ as *const c_void,
+        //                 gamma as *const _ as *const c_void,
+        //                 theta as *const _ as *const c_void,
+        //                 y as *const _ as *const c_void,
+        //                 rot_scale,
+        //                 isize,
+        //                 round,
+        //             );
+        //             #[cfg(feature = "profile")]
+        //             println!("Eval elapsed: {:?}", now.elapsed());
+        //         }
+        //     }
+        // }
 
         <() as Functor<C>>::invoke(
             self, values, fixed, advice, instance, challenges, beta, gamma, theta, y, rot_scale,
