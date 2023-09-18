@@ -302,6 +302,7 @@ impl<C: CurveAffine> GraphEvaluator<C> {
         isize: i32,
         round: usize,
     ) {
+        println!("calculations: {}", self.calculations.len());
         trait Functor<F: CurveAffine> {
             fn invoke<P: Deref<Target = [F::ScalarExt]> + Sync + Send>(
                 graph: &GraphEvaluator<F>,
@@ -336,11 +337,13 @@ impl<C: CurveAffine> GraphEvaluator<C> {
                 isize: i32,
                 _round: usize,
             ) {
+                #[cfg(feature = "profile")]
                 let now = std::time::Instant::now();
                 graph.evaluate_inner(
                     values, fixed, advice, instance, challenges, beta, gamma, theta, y, rot_scale,
                     isize,
                 );
+                #[cfg(feature = "profile")]
                 println!("Eval(Host) elapsed: {:?}", now.elapsed());
             }
         }
