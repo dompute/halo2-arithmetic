@@ -9,6 +9,12 @@ use halo2curves::{bn256::G1Affine, CurveAffine};
 
 use crate::value_source::{Calculation, CalculationInfo, Rotation, ValueSource};
 
+#[cfg(feature = "cuda")]
+#[derive(Clone, Debug)]
+struct InnerGraph(*const c_void);
+unsafe impl Send for InnerGraph {}
+unsafe impl Sync for InnerGraph {}
+
 /// GraphEvaluator
 #[derive(Clone, Debug)]
 pub struct GraphEvaluator<C: CurveAffine> {
@@ -21,7 +27,7 @@ pub struct GraphEvaluator<C: CurveAffine> {
     /// Number of intermediates
     pub num_intermediates: usize,
     #[cfg(feature = "cuda")]
-    inner: *const c_void,
+    inner: InnerGraph,
 }
 
 // #[cfg(feature = "cuda")]
@@ -46,7 +52,7 @@ impl<C: CurveAffine> Default for GraphEvaluator<C> {
             calculations: Vec::new(),
             num_intermediates: 0,
             #[cfg(feature = "cuda")]
-            inner: unsafe { crate::stub::create_graph() },
+            inner: unsafe { InnerGraph(crate::stub::create_graph()) },
         }
     }
 }
@@ -112,7 +118,7 @@ impl<C: CurveAffine> GraphEvaluator<C> {
                 let vs: Vec<ValueSource> = vec![l, r];
                 unsafe {
                     push_node(
-                        self.inner,
+                        self.inner.0,
                         target,
                         CalculationTag::Add,
                         vs.as_ptr() as *const _,
@@ -124,7 +130,7 @@ impl<C: CurveAffine> GraphEvaluator<C> {
                 let vs: Vec<ValueSource> = vec![l, r];
                 unsafe {
                     push_node(
-                        self.inner,
+                        self.inner.0,
                         target,
                         CalculationTag::Sub,
                         vs.as_ptr() as *const _,
@@ -136,7 +142,7 @@ impl<C: CurveAffine> GraphEvaluator<C> {
                 let vs: Vec<ValueSource> = vec![l, r];
                 unsafe {
                     push_node(
-                        self.inner,
+                        self.inner.0,
                         target,
                         CalculationTag::Mul,
                         vs.as_ptr() as *const _,
@@ -148,7 +154,7 @@ impl<C: CurveAffine> GraphEvaluator<C> {
                 let vs: Vec<ValueSource> = vec![l];
                 unsafe {
                     push_node(
-                        self.inner,
+                        self.inner.0,
                         target,
                         CalculationTag::Double,
                         vs.as_ptr() as *const _,
@@ -160,7 +166,7 @@ impl<C: CurveAffine> GraphEvaluator<C> {
                 let vs: Vec<ValueSource> = vec![l];
                 unsafe {
                     push_node(
-                        self.inner,
+                        self.inner.0,
                         target,
                         CalculationTag::Square,
                         vs.as_ptr() as *const _,
@@ -172,7 +178,7 @@ impl<C: CurveAffine> GraphEvaluator<C> {
                 let vs: Vec<ValueSource> = vec![l];
                 unsafe {
                     push_node(
-                        self.inner,
+                        self.inner.0,
                         target,
                         CalculationTag::Negate,
                         vs.as_ptr() as *const _,
@@ -183,7 +189,7 @@ impl<C: CurveAffine> GraphEvaluator<C> {
             Calculation::Store(l) => unsafe {
                 let vs: Vec<ValueSource> = vec![l];
                 push_node(
-                    self.inner,
+                    self.inner.0,
                     target,
                     CalculationTag::Store,
                     vs.as_ptr() as *const _,
@@ -198,7 +204,7 @@ impl<C: CurveAffine> GraphEvaluator<C> {
                 vs.push(r);
                 unsafe {
                     push_node(
-                        self.inner,
+                        self.inner.0,
                         target,
                         CalculationTag::Horner,
                         vs.as_ptr() as *const _,
@@ -383,7 +389,7 @@ impl<C: CurveAffine> GraphEvaluator<C> {
                     crate::stub::evaluate_batch(
                         values.as_mut_ptr() as *mut _,
                         values.len(),
-                        graph.inner,
+                        graph.inner.0,
                         graph.rotations.as_ptr(),
                         graph.rotations.len(),
                         graph.constants.as_ptr() as *const c_void,
