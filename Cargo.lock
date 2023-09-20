@@ -118,9 +118,8 @@ name = "fam"
 version = "0.1.0"
 dependencies = [
  "cc",
- "ff",
- "group",
  "halo2curves",
+ "lazy_static",
  "rand",
  "rayon",
  "serde",

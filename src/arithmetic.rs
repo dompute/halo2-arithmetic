@@ -307,9 +307,10 @@ pub fn best_fft<G: Group>(a: &mut [G], omega: G::Scalar, log_n: u32) {
 mod cuda {
     use std::ffi::c_void;
 
-    use ff::PrimeField;
-    use group::{prime::PrimeCurveAffine, Group};
-    use halo2curves::bn256::{Fr, G1Affine, G1};
+    use halo2curves::{
+        bn256::{Fr, G1Affine, G1},
+        group::Group,
+    };
 
     pub fn msm(scalars: &[Fr], bases: &[G1Affine]) -> G1 {
         let mut out = G1::identity();
@@ -348,10 +349,10 @@ mod cuda {
     mod tests {
         use std::ops::Mul;
 
-        use ff::Field;
-
-        use group::Curve;
-        use halo2curves::bn256::{Fq, Fr, G1Affine, G1};
+        use halo2curves::{
+            bn256::{Fq, Fr, G1Affine, G1},
+            group::{ff::Field, Curve},
+        };
         use rand::rngs::OsRng;
 
         use crate::arithmetic::{best_fft_inner, best_multiexp_inner};

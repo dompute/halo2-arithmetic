@@ -1,19 +1,27 @@
 use std::{ffi::c_void, ops::Deref};
 
-use ff::Field;
-
-#[cfg(feature = "cuda")]
-use halo2curves::bn256::Fr;
-
-use halo2curves::{bn256::G1Affine, CurveAffine};
+use halo2curves::{
+    bn256::{Fr, G1Affine},
+    group::ff::Field,
+    CurveAffine,
+};
 
 use crate::value_source::{Calculation, CalculationInfo, Rotation, ValueSource};
+
+#[cfg(feature = "profile")]
+use {lazy_static::lazy_static, std::sync::Mutex};
 
 #[cfg(feature = "cuda")]
 #[derive(Clone, Debug)]
 struct InnerGraph(*const c_void);
 unsafe impl Send for InnerGraph {}
 unsafe impl Sync for InnerGraph {}
+
+#[cfg(feature = "profile")]
+lazy_static! {
+    static ref GRAPH_ELAPSED_TIME: Mutex<u128> = Mutex::new(0);
+    static ref GRAPH_CALL_COUNTER: Mutex<u128> = Mutex::new(0);
+}
 
 /// GraphEvaluator
 #[derive(Clone, Debug)]
@@ -342,14 +350,10 @@ impl<C: CurveAffine> GraphEvaluator<C> {
                 isize: i32,
                 _round: usize,
             ) {
-                #[cfg(feature = "profile")]
-                let now = std::time::Instant::now();
                 graph.evaluate_inner(
                     values, fixed, advice, instance, challenges, beta, gamma, theta, y, rot_scale,
                     isize,
                 );
-                #[cfg(feature = "profile")]
-                println!("Eval(Host) elapsed: {:?}", now.elapsed());
             }
         }
 
@@ -384,8 +388,6 @@ impl<C: CurveAffine> GraphEvaluator<C> {
                     let (fixed, fiexd_col, fixed_row) = f(fixed);
                     let (advice, advice_col, advice_row) = f(advice);
                     let (instance, instance_col, instance_row) = f(instance);
-                    #[cfg(feature = "profile")]
-                    let now = std::time::Instant::now();
                     crate::stub::evaluate_batch(
                         values.as_mut_ptr() as *mut _,
                         values.len(),
@@ -413,15 +415,32 @@ impl<C: CurveAffine> GraphEvaluator<C> {
                         isize,
                         round,
                     );
-                    #[cfg(feature = "profile")]
-                    println!("Eval elapsed: {:?}", now.elapsed());
                 }
             }
         }
 
+        #[cfg(feature = "profile")]
+        let now = std::time::Instant::now();
         <() as Functor<C>>::invoke(
             self, values, fixed, advice, instance, challenges, beta, gamma, theta, y, rot_scale,
             isize, round,
         );
+
+        #[cfg(feature = "profile")]
+        {
+            let elapsed = now.elapsed().as_micros();
+            *GRAPH_ELAPSED_TIME.lock().unwrap() += elapsed;
+            *GRAPH_CALL_COUNTER.lock().unwrap() += 1;
+            if *GRAPH_CALL_COUNTER.lock().unwrap() % 100 == 0 {
+                let total = *GRAPH_ELAPSED_TIME.lock().unwrap() as f64;
+                let counter = *GRAPH_CALL_COUNTER.lock().unwrap();
+                println!(
+                    "Average graph evaluation time: {:.3} ms over {} calls(costs {:.3}ms)",
+                    total / (counter as f64) / 1000.0,
+                    counter,
+                    total / 1000.0
+                );
+            }
+        }
     }
 }

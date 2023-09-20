@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use group::ff::Field;
+use halo2curves::group::ff::Field;
 use serde::{Deserialize, Serialize};
 
 /// Describes the relative rotation of a vector. Negative numbers represent
