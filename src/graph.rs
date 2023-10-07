@@ -14,7 +14,9 @@ use {lazy_static::lazy_static, std::sync::Mutex};
 #[cfg(feature = "cuda")]
 #[derive(Clone, Debug)]
 struct InnerGraph(*const c_void);
+#[cfg(feature = "cuda")]
 unsafe impl Send for InnerGraph {}
+#[cfg(feature = "cuda")]
 unsafe impl Sync for InnerGraph {}
 
 #[cfg(feature = "profile")]
