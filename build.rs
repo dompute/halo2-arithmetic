@@ -16,6 +16,7 @@ fn main() {
         .cuda(true)
         .opt_level(3)
         .cudart("static")
+        .flag("-ccbin=/opt/cuda/bin")
         .file("libfam/src/stub.cu")
         .compile("libfam.a");
 
